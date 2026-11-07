@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { CharacterSprite, facingForMovement, setFrame } from './character';
+import { CASTER_LAYOUT, CharacterSprite, FAMILIAR_LAYOUT, HUMAN_LAYOUT, STUDENT_LAYOUT, facingForMovement, setFrame } from './character';
 import { createBirdEyeCamera, fitBirdEyeCamera } from './view';
 
 describe('fixed bird-eye framing', () => {
@@ -41,14 +41,14 @@ describe('replaceable foot-anchored sprite sheets', () => {
     const foot = sprite.mesh.localToWorld(new THREE.Vector3(0, 0, 0));
     expect(foot.distanceTo(position)).toBeLessThan(0.0001);
     sprite.mesh.geometry.computeBoundingBox();
-    expect(sprite.mesh.geometry.boundingBox?.min.y).toBeCloseTo(0, 6);
+    expect(sprite.mesh.geometry.boundingBox?.min.y).toBeCloseTo(-(1 - STUDENT_LAYOUT.foot) * 2.5, 6);
     expect(sprite.mesh.material.depthTest).toBe(true);
     expect(sprite.mesh.material.depthWrite).toBe(true);
     expect(sprite.mesh.material.transparent).toBe(false);
     expect(sprite.mesh.material.alphaTest).toBeGreaterThan(0);
     sprite.move(-0.2, 0);
     sprite.animate(true);
-    expect(texture.offset.x).toBe(0.5);
+    expect(texture.offset.x).toBe(0.25);
     expect(texture.offset.y).toBe(0.5);
     expect(texture.repeat.toArray()).toEqual([0.25, 0.25]);
     expect(sprite.mesh.position.equals(position)).toBe(true);
@@ -73,5 +73,52 @@ describe('replaceable foot-anchored sprite sheets', () => {
     expect(facingForMovement(1, 0, 'down')).toBe('right');
     expect(facingForMovement(0, -1, 'down')).toBe('up');
     expect(facingForMovement(0, 1, 'up')).toBe('down');
+  });
+
+  it('uses actual movement poses and casting poses without moving the sprite plane or foot anchor', () => {
+    const camera = createBirdEyeCamera();
+    const sprite = new CharacterSprite(new THREE.Texture(), camera);
+    const position = sprite.mesh.position.clone();
+    sprite.move(0.25, 0);
+    sprite.animate(true, 0.1);
+    expect(sprite.clip).toBe('walk');
+    expect(sprite.frame).toBe(2);
+    sprite.animate(true, 0.1);
+    expect(sprite.clip).toBe('idle');
+    sprite.playAction();
+    sprite.animate(true, 0.2);
+    expect(sprite.clip).toBe('action');
+    expect(sprite.frame).toBe(3);
+    sprite.animate(true, 1);
+    expect(sprite.clip).toBe('idle');
+    sprite.setCasting(true);
+    sprite.animate(true, 4);
+    expect(sprite.clip).toBe('action');
+    sprite.setCasting(false);
+    sprite.animate(true);
+    expect(sprite.clip).toBe('idle');
+    expect(sprite.mesh.position.equals(position)).toBe(true);
+  });
+
+  it('maps living familiar wing frames, fixed caster poses and directional human movement', () => {
+    const camera = createBirdEyeCamera();
+    const familiar = new CharacterSprite(new THREE.Texture(), camera, 1.7, FAMILIAR_LAYOUT);
+    familiar.animate(true, 0.15);
+    expect(familiar.frame).toBe(1);
+    familiar.animate(true, 0.15);
+    expect(familiar.frame).toBe(2);
+    familiar.animate(false, 1);
+    expect(familiar.frame).toBe(0);
+    const caster = new CharacterSprite(new THREE.Texture(), camera, 2.5, CASTER_LAYOUT);
+    caster.animate(false, 3);
+    expect(caster.frame).toBe(0);
+    expect(caster.mesh.material.map?.repeat.toArray()).toEqual([1, 0.25]);
+    const person = new CharacterSprite(new THREE.Texture(), camera, 2.5, HUMAN_LAYOUT);
+    person.move(-0.25, 0);
+    person.animate(true, 0.1);
+    expect(person.mesh.material.map?.offset.y).toBeCloseTo(1 / 3);
+    person.playAction();
+    person.animate(true, 0.2);
+    expect(person.frame).toBe(3);
   });
 });

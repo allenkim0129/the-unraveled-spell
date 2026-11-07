@@ -1,110 +1,77 @@
 import * as THREE from 'three';
-import { t } from '../i18n';
 
 export type Facing = 'down' | 'left' | 'right' | 'up';
+export type Appearance = 'boy' | 'girl';
+export type CharacterRole = Appearance | 'fireCaster' | 'motionCaster' | 'friend' | 'backgroundStudent' | 'mintFamiliar' | 'lavenderFamiliar';
+export type CharacterArt = Record<CharacterRole, THREE.Texture>;
 export const FACING_ROWS: Record<Facing, number> = { down: 0, left: 1, right: 2, up: 3 };
 export const FRAME_COLUMNS = 4;
+
+export interface SpriteLayout {
+  columns: number;
+  rows: number;
+  directions: Record<Facing, number>;
+  idle: readonly number[];
+  walk: readonly number[];
+  action: readonly number[];
+  aspect: number;
+  foot: number;
+  fps: number;
+}
+
+export const STUDENT_LAYOUT: SpriteLayout = {
+  columns: 4, rows: 4, directions: FACING_ROWS,
+  idle: [0], walk: [1, 2], action: [1, 3, 3, 0],
+  aspect: 256 / 288, foot: 276 / 288, fps: 6,
+};
+const FRONT_ONLY: Record<Facing, number> = { down: 0, left: 0, right: 0, up: 0 };
+export const HUMAN_LAYOUT: SpriteLayout = {
+  ...STUDENT_LAYOUT, rows: 3, directions: { down: 0, left: 1, right: 2, up: 0 }, action: [0, 3, 3, 0],
+};
+export const CASTER_LAYOUT: SpriteLayout = {
+  ...STUDENT_LAYOUT, columns: 1, idle: [0], walk: [0], action: [],
+};
+export const FAMILIAR_LAYOUT: SpriteLayout = {
+  ...HUMAN_LAYOUT, rows: 1, directions: FRONT_ONLY, idle: [0, 1, 2, 3], walk: [0, 1, 2, 3], action: [],
+  aspect: 320 / 288, fps: 8,
+};
+
+export const CHARACTER_FILES: Record<CharacterRole, string> = {
+  boy: 'student-boy.png', girl: 'student-girl.png',
+  fireCaster: 'fire-caster.png', motionCaster: 'motion-caster.png',
+  friend: 'friend.png', backgroundStudent: 'background-student.png',
+  mintFamiliar: 'mint-familiar.png', lavenderFamiliar: 'lavender-familiar.png',
+};
+
+export async function loadCharacterArt(): Promise<CharacterArt> {
+  const loader = new THREE.TextureLoader();
+  const load = async (role: CharacterRole) => {
+    const texture = await loader.loadAsync(`${import.meta.env.BASE_URL}characters/${CHARACTER_FILES[role]}`);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    return texture;
+  };
+  const [boy, girl, fireCaster, motionCaster, friend, backgroundStudent, mintFamiliar, lavenderFamiliar] =
+    await Promise.all([
+      load('boy'), load('girl'), load('fireCaster'), load('motionCaster'),
+      load('friend'), load('backgroundStudent'), load('mintFamiliar'), load('lavenderFamiliar'),
+    ]);
+  return { boy, girl, fireCaster, motionCaster, friend, backgroundStudent, mintFamiliar, lavenderFamiliar };
+}
 
 export function facingForMovement(x: number, z: number, previous: Facing): Facing {
   if (Math.hypot(x, z) < 0.0001) return previous;
   return Math.abs(x) > Math.abs(z) ? (x < 0 ? 'left' : 'right') : (z < 0 ? 'up' : 'down');
 }
 
-export function setFrame(texture: THREE.Texture, facing: Facing, frame: number): void {
-  texture.repeat.set(1 / FRAME_COLUMNS, 1 / 4);
-  texture.offset.set(frame / FRAME_COLUMNS, 1 - (FACING_ROWS[facing] + 1) / 4);
+export function setFrame(texture: THREE.Texture, facing: Facing, frame: number, layout = STUDENT_LAYOUT): void {
+  texture.repeat.set(1 / layout.columns, 1 / layout.rows);
+  texture.offset.set(frame / layout.columns, 1 - (layout.directions[facing] + 1) / layout.rows);
 }
 
-export function footAnchoredGeometry(width: number, height: number): THREE.PlaneGeometry {
-  return new THREE.PlaneGeometry(width, height).translate(0, height / 2, 0);
-}
-
-// Placeholder atlas: four direction rows, idle in column 0 and walking in columns 1-3.
-export function createPlaceholderSheet(coat: string, trim: string, wand = false): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 128 * FRAME_COLUMNS;
-  canvas.height = 160 * 4;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error(t('errorCanvas'));
-  for (const [facing, row] of Object.entries(FACING_ROWS)) {
-    for (let frame = 0; frame < FRAME_COLUMNS; frame++) {
-      ctx.save();
-      ctx.translate(frame * 128, row * 160);
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = '#202236';
-      const stride = frame === 1 ? -5 : frame === 3 ? 5 : 0;
-      ctx.fillStyle = '#252338';
-      ctx.fillRect(46 + stride, 137, 15, 23);
-      ctx.fillRect(68 - stride, 137, 15, 23);
-      ctx.fillStyle = coat;
-      ctx.beginPath();
-      ctx.moveTo(46, 69);
-      ctx.quadraticCurveTo(30, 97, 28, 138);
-      ctx.quadraticCurveTo(64, 151, 100, 138);
-      ctx.quadraticCurveTo(94, 91, 82, 69);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = trim;
-      ctx.fillRect(58, 85, 12, 58);
-      ctx.fillStyle = '#d9bdab';
-      ctx.beginPath();
-      ctx.ellipse(64, 53, 22, 27, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = coat;
-      ctx.beginPath();
-      ctx.moveTo(30, 46);
-      ctx.quadraticCurveTo(37, 8, 64, 5);
-      ctx.quadraticCurveTo(91, 8, 98, 46);
-      ctx.lineTo(87, 59);
-      ctx.quadraticCurveTo(84, 29, 64, 28);
-      ctx.quadraticCurveTo(44, 29, 41, 59);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      if (facing === 'up') {
-        ctx.fillStyle = coat;
-        ctx.beginPath();
-        ctx.ellipse(64, 52, 23, 28, 0, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = '#29273d';
-        const eyeX = facing === 'left' ? 51 : facing === 'right' ? 75 : 56;
-        ctx.fillRect(eyeX, 51, 5, 7);
-        if (facing === 'down') ctx.fillRect(73, 51, 5, 7);
-      }
-      ctx.fillStyle = trim;
-      ctx.beginPath();
-      ctx.moveTo(64, 76);
-      ctx.lineTo(71, 85);
-      ctx.lineTo(64, 94);
-      ctx.lineTo(57, 85);
-      ctx.closePath();
-      ctx.fill();
-      if (wand) {
-        ctx.strokeStyle = '#f0d5a2';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(99, 128);
-        ctx.lineTo(110, 78);
-        ctx.stroke();
-        ctx.fillStyle = trim;
-        ctx.beginPath();
-        ctx.arc(110, 78, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
-  setFrame(texture, 'down', 0);
-  return texture;
+export function footAnchoredGeometry(width: number, height: number, foot = 1): THREE.PlaneGeometry {
+  return new THREE.PlaneGeometry(width, height).translate(0, (foot - 0.5) * height, 0);
 }
 
 export class CharacterSprite {
@@ -112,15 +79,23 @@ export class CharacterSprite {
   private facing: Facing = 'down';
   private strideDistance = 0;
   private moved = false;
+  private idleTime = 0;
+  private actionTime = 0;
+  private actionRemaining = 0;
+  private casting = false;
+  clip: 'idle' | 'walk' | 'action' = 'idle';
+  frame = 0;
 
-  constructor(texture: THREE.Texture, camera: THREE.Camera, height = 1.8) {
+  constructor(texture: THREE.Texture, camera: THREE.Camera, height = 2.5, private readonly layout = STUDENT_LAYOUT) {
     this.mesh = new THREE.Mesh(
-      footAnchoredGeometry(height * 0.8, height),
-      new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.35, depthTest: true, depthWrite: true }),
+      footAnchoredGeometry(height * layout.aspect, height, layout.foot),
+      new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.2, depthTest: true, depthWrite: true, toneMapped: false }),
     );
     this.mesh.quaternion.copy(camera.quaternion);
     this.mesh.position.y = 0.025;
     this.mesh.name = 'foot-anchored-character';
+    this.mesh.userData.clip = 'idle';
+    this.animate(false);
   }
 
   move(dx: number, dz: number): void {
@@ -131,17 +106,45 @@ export class CharacterSprite {
     this.moved = true;
   }
 
-  animate(enabled: boolean): void {
-    const frame = enabled && this.moved ? 1 + Math.floor(this.strideDistance / 0.18) % 3 : 0;
+  playAction(): void {
+    if (!this.layout.action.length) return;
+    this.actionTime = 0;
+    this.actionRemaining = this.layout.action.length / this.layout.fps;
+  }
+
+  face(facing: Facing): void {
+    this.facing = facing;
+  }
+
+  setCasting(casting: boolean): void {
+    if (casting && !this.casting) this.actionTime = 0;
+    this.casting = casting;
+  }
+
+  animate(enabled: boolean, seconds = 0): void {
+    this.idleTime += seconds;
+    this.actionTime += seconds;
+    this.actionRemaining = Math.max(0, this.actionRemaining - seconds);
+    const acting = this.layout.action.length > 0 && (this.casting || this.actionRemaining > 0);
+    const clip = acting ? 'action' : enabled && this.moved ? 'walk' : 'idle';
+    const frames = this.layout[clip];
+    const index = !enabled ? acting ? frames.indexOf(3) : 0 :
+      clip === 'walk' ? Math.floor(this.strideDistance / 0.22) :
+      Math.floor((acting ? this.actionTime : this.idleTime) * this.layout.fps);
+    const frame = frames[Math.max(0, index) % frames.length];
     const texture = this.mesh.material.map;
-    if (texture) setFrame(texture, this.facing, frame);
+    if (texture) setFrame(texture, this.facing, frame, this.layout);
+    this.mesh.userData.clip = clip;
+    this.mesh.userData.frame = frame;
+    this.clip = clip;
+    this.frame = frame;
     this.moved = false;
   }
 
   reset(): void {
     this.facing = 'down';
-    this.strideDistance = 0;
-    this.moved = false;
+    this.strideDistance = this.idleTime = this.actionTime = this.actionRemaining = 0;
+    this.moved = this.casting = false;
     this.animate(false);
   }
 }

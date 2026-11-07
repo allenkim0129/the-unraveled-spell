@@ -76,6 +76,7 @@ export const markup = `
           <h2 id="editor-title"></h2><p id="connection" class="connection"></p><div id="targets" class="targets"></div>
           <button id="cut" class="cut-button" data-i18n="cut"></button>
           <p class="editor-note" data-i18n-html="editorNote"></p>
+          <p class="editor-note" data-i18n="spellVisualNote"></p>
         </section>
         <div class="sidebar-bottom">
           <button id="journal" class="quiet-button journal-button" data-i18n="journal"></button>
@@ -101,11 +102,22 @@ export const markup = `
         <div><span>▷</span><strong data-i18n="introExecute"></strong><p data-i18n-html="introExecuteBody"></p></div>
       </div>
       <div class="intro-controls" data-i18n-html="introControls"></div>
+      <p class="retry-note" data-i18n="spellVisualNote"></p>
       <p class="retry-note" data-i18n-html="retryNote"></p>
       <label class="name-label"><span data-i18n="studentName"></span>
         <input id="student-name" maxlength="24" value="Ari" autocomplete="off" />
       </label>
-      <button id="start" class="primary-button"></button>
+      <div class="appearance-row">
+        <div id="appearance-preview" role="img" data-i18n-aria="appearancePreview"></div>
+        <label class="name-label appearance-label"><span data-i18n="appearanceLabel"></span>
+          <select id="student-appearance">
+            <option value="boy" data-i18n="appearanceBoy"></option>
+            <option value="girl" data-i18n="appearanceGirl"></option>
+          </select>
+          <small data-i18n="appearanceNote"></small>
+        </label>
+      </div>
+      <button id="start" class="primary-button" disabled></button>
       <p class="audio-status" data-i18n="audioStartNote"></p>
       <small data-i18n="introFootnote"></small>
     </div>

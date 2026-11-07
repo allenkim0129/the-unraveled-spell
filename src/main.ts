@@ -17,6 +17,9 @@ import {
 import type { Gesture, StoryResult } from './game/adventure';
 import type { Vector3 } from 'three';
 import { GameAudio } from './game/audio';
+import { CHARACTER_FILES, loadCharacterArt } from './game/character';
+import type { Appearance, CharacterArt } from './game/character';
+import academyBackdrop from './assets/academy-background.webp';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Application root is missing.');
@@ -35,6 +38,13 @@ try {
   console.warn('Language preference storage is unavailable; using Korean.', error);
 }
 translateMarkup();
+let appearance: Appearance = 'boy';
+try {
+  const stored = localStorage.getItem('magical-time-appearance');
+  if (stored === 'boy' || stored === 'girl') appearance = stored;
+} catch (error) {
+  console.warn('Appearance preference storage is unavailable; using the boy appearance.', error);
+}
 
 const ui = {
   scene: get('scene'), stitches: get('stitches'), phase: get('phase'), outcome: get('outcome'),
@@ -55,10 +65,30 @@ const ui = {
   sequence: get('gesture-sequence'),
   audioDialog: get<HTMLDialogElement>('audio-dialog'), audioLanguage: get<HTMLSelectElement>('audio-language'),
   audioStatus: get('audio-status'), voiceStatus: get('voice-status'), audioToggle: get<HTMLButtonElement>('audio-toggle'),
+  appearance: get<HTMLSelectElement>('student-appearance'), appearancePreview: get('appearance-preview'),
 };
 
 let refreshGameLanguage: (() => void) | undefined;
+let refreshGameAppearance: (() => void) | undefined;
 let fatalKey: MessageKey | null = null;
+ui.appearance.value = appearance;
+const refreshAppearancePreview = () => {
+  ui.appearancePreview.style.backgroundImage = `url("${import.meta.env.BASE_URL}characters/${CHARACTER_FILES[appearance]}")`;
+  ui.appearancePreview.dataset.appearance = appearance;
+};
+refreshAppearancePreview();
+ui.appearance.addEventListener('change', () => {
+  const value = ui.appearance.value;
+  if (value !== 'boy' && value !== 'girl') return;
+  appearance = value;
+  try {
+    localStorage.setItem('magical-time-appearance', value);
+  } catch (error) {
+    console.warn('Appearance preference could not be saved; the in-game choice is still active.', error);
+  }
+  refreshAppearancePreview();
+  refreshGameAppearance?.();
+});
 ui.language.value = ui.introLanguage.value = ui.fatalLanguage.value = ui.storyLanguage.value = ui.audioLanguage.value = getLanguage();
 for (const select of [ui.language, ui.introLanguage, ui.fatalLanguage, ui.storyLanguage, ui.audioLanguage]) {
   select.addEventListener('change', () => {
@@ -88,11 +118,11 @@ function showFatal(key: MessageKey, error: unknown): void {
   if (ui.audioDialog.open) ui.audioDialog.close();
 }
 
-function initialize(): void {
+function initialize(art: CharacterArt): void {
   let adventure = createAdventure();
   let scene: GameScene;
   try {
-    scene = new GameScene(ui.scene, adventure);
+    scene = new GameScene(ui.scene, adventure, art, appearance);
   } catch (error) {
     showFatal('errorWebGL', error);
     return;
@@ -140,7 +170,7 @@ function initialize(): void {
     }, { signal: sceneListeners.signal });
   };
   const replaceScene = () => {
-    const next = new GameScene(ui.scene, adventure);
+    const next = new GameScene(ui.scene, adventure, art, appearance);
     sceneListeners.abort();
     scene.dispose();
     scene = next;
@@ -167,6 +197,7 @@ function initialize(): void {
     toastTimeout = setTimeout(() => { ui.toast.hidden = true; }, 4500);
   };
   const apply = (result: ActionResult, success: MessageKey, target?: TargetId) => {
+    if (result.ok) scene.playPlayerAction();
     audio.effect(result.ok ? success === 'notifyCut' ? 'cut' : 'cast' : 'error');
     notify(result.ok ? success : result.message, target);
     lastUiSignature = '';
@@ -266,6 +297,7 @@ function initialize(): void {
         updateUI();
         notify('lightSuccess');
         audio.effect('cast');
+        scene.playPlayerAction();
       });
     } else if (storyScreen === 'emotion') {
       for (const [id, key] of [
@@ -311,6 +343,7 @@ function initialize(): void {
     input.clear(ui.knob);
     ui.start.textContent = t(started ? 'return' : 'enter');
     get<HTMLInputElement>('student-name').readOnly = started;
+    ui.appearance.disabled = started;
     ui.instructions.showModal();
   };
   const action = (name: InputAction) => {
@@ -334,7 +367,7 @@ function initialize(): void {
           break;
         }
         if (interaction === 'memory') { startMemory(); break; }
-        if (interaction === 'friend') { showStory('friend'); break; }
+        if (interaction === 'friend') { scene.waveFriend(); showStory('friend'); break; }
         if (interaction === 'ward') { gestures = []; showStory('cast'); break; }
         if (interaction === 'reason' || interaction === 'motive') { showStory(interaction); break; }
         if (interaction === 'source') {
@@ -451,6 +484,9 @@ function initialize(): void {
     updateUI();
     if (adventure.restored && !ui.audioDialog.open) narrateEnding();
   };
+  refreshGameAppearance = () => {
+    if (!started) replaceScene();
+  };
 
   ui.targets.addEventListener('click', (event) => {
     if (!selected || scene.nearestSpell() !== selected) { notify('notifyApproach'); return; }
@@ -517,6 +553,7 @@ function initialize(): void {
     else storyError = 'castIncorrect';
     renderStory();
     audio.effect('cast');
+    scene.playPlayerAction();
   }, options);
   ui.story.addEventListener('close', () => { input.clear(ui.knob); previous = performance.now(); }, options);
   get('close-editor').addEventListener('click', () => { selected = null; updateUI(); }, options);
@@ -598,6 +635,7 @@ function initialize(): void {
   };
   updateUI();
   renderAudio();
+  ui.start.disabled = false;
   openInstructions();
   frame = requestAnimationFrame(loop);
   import.meta.hot?.dispose(() => {
@@ -605,12 +643,34 @@ function initialize(): void {
     lifetime.abort();
     sceneListeners.abort();
     refreshGameLanguage = undefined;
+    refreshGameAppearance = undefined;
     cancelAnimationFrame(frame);
     clearTimeout(toastTimeout);
     input.dispose();
     scene.dispose();
     audio.dispose();
+    Object.values(art).forEach((texture) => texture.dispose());
   });
 }
 
-initialize();
+async function bootstrap(): Promise<void> {
+  ui.outcome.textContent = t('loadingCharacterArt');
+  let art: CharacterArt;
+  try {
+    art = await loadCharacterArt();
+  } catch (error) {
+    showFatal('errorCharacterArt', error);
+    return;
+  }
+  try {
+    const backdrop = new Image();
+    backdrop.src = academyBackdrop;
+    await backdrop.decode();
+  } catch (error) {
+    showFatal('errorEnvironmentArt', error);
+    return;
+  }
+  initialize(art);
+}
+
+void bootstrap();

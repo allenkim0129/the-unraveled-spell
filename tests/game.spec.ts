@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-async function begin(page: Page, book = true): Promise<void> {
+async function begin(page: Page, book = true, appearance: 'boy' | 'girl' = 'boy'): Promise<void> {
   await page.goto('./');
   await expect(page).toHaveTitle('Magical Time');
   await page.locator('#student-name').fill('Mina');
+  await page.locator('#student-appearance').selectOption(appearance);
   await page.locator('#start').click();
   await expect(page.locator('#story-title')).toContainText('여신');
   await page.locator('[data-choice="continue"]').click();
@@ -117,11 +118,14 @@ test('play the full adventure with memories, ordinary casting, source discoverie
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await begin(page);
+  await begin(page, true, isMobile ? 'girl' : 'boy');
+  const appearance = isMobile ? 'girl' : 'boy';
+  await expect(page.locator('#scene')).toHaveAttribute('data-appearance', appearance);
   await page.locator('#journal').click();
   await page.locator('[data-choice="remember"]').click();
   await page.locator('[data-choice="continue"]').click();
   await expect(page.locator('#scene')).toHaveAttribute('data-chapter', 'memory');
+  await expect(page.locator('#scene')).toHaveAttribute('data-appearance', appearance);
   await page.screenshot({ path: test.info().outputPath('memory.png') });
   await move(page, isMobile, 0, 1, { interaction: 'friend' });
   await page.locator('#interact').click();
@@ -129,6 +133,7 @@ test('play the full adventure with memories, ordinary casting, source discoverie
   await expect(page.locator('#story-error')).toContainText('슬픔을 지우는 주문');
   await page.locator('[data-choice="honest"]').click();
   await expect(page.locator('#scene')).toHaveAttribute('data-chapter', 'academy');
+  await expect(page.locator('#scene')).toHaveAttribute('data-appearance', appearance);
   await expect(page.locator('#success')).toBeHidden();
   await solveBridge(page, isMobile);
   await move(page, isMobile, 0, 1, { interaction: 'ward' });
@@ -143,7 +148,9 @@ test('play the full adventure with memories, ordinary casting, source discoverie
   await page.locator('#cast-word').selectOption('Lumen');
   await page.locator('[data-choice="cast"]').click();
   await move(page, isMobile, 0, 1, { chapter: 'source' });
+  await expect(page.locator('#scene')).toHaveAttribute('data-appearance', appearance);
   await expect(page.locator('#success')).toBeHidden();
+  await expect(page.locator('#scene')).toHaveAttribute('data-appearance', appearance);
   await page.screenshot({ path: test.info().outputPath('source.png') });
   await move(page, isMobile, -1, 1, { interaction: 'reason' });
   await page.locator('#interact').click();
@@ -171,6 +178,7 @@ test('play the full adventure with memories, ordinary casting, source discoverie
   await expect(page.locator('#success')).toBeVisible();
   await page.locator('#replay').click();
   await expect(page.locator('#scene')).toHaveAttribute('data-chapter', 'academy');
+  await expect(page.locator('#scene')).toHaveAttribute('data-appearance', isMobile ? 'girl' : 'boy');
   await expect(page.locator('#success')).toBeHidden();
   await page.locator('[data-choice="continue"]').click();
   await expect(page.locator('#execute')).toBeDisabled();
@@ -268,6 +276,7 @@ test('audio unlock, independent volumes, missing-local-voice notices and setting
     }
     Object.defineProperty(window, 'speechSynthesis', { value: new NoLocalVoices() });
   });
+
   await begin(page);
   await page.locator('#audio-settings').click();
   await expect(page.locator('#audio-status')).toContainText('기기 내장 음성이 없습니다');

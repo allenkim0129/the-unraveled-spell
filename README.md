@@ -4,11 +4,11 @@ A **Korean/English, bird's-eye 2.5D web adventure** about a magic-academy studen
 
 Play: https://allenkim0129.github.io/the-unraveled-spell/
 
-Requires a modern WebGL browser. No installation, account or backend. Language changes preserve gameplay; only language preference is stored across reloads.
+Requires a modern WebGL browser. No installation, account or backend. Language changes preserve gameplay. Language and character appearance preferences are stored across reloads; gameplay is not.
 
 ## Adventure and controls
 
-Find the book, edit the academy's bridge spells, cross the trail with learned magic, and reach the spell's source. A familiar scarf or the book's journal opens a short playable memory. Move to your friend, face the feeling honestly, and return to your saved present-day position and puzzle edits. Memories do not instantly erase loneliness.
+Find the book, edit the academy's bridge spells, cross the trail with learned magic, and reach the spell's source. The glowing **memory fragment** by the frozen friend, or the book's journal, opens a short playable memory. Move to your friend, face the feeling honestly, and return to your saved present-day position and puzzle edits. Memories do not instantly erase loneliness.
 
 Ordinary casting requires the correct word and an explicit sequence of wand-direction buttons, not freehand gesture recognition. Emotional magic requires understanding feelings rather than suppressing pain. At the source, restoration requires a memory, both discoveries, and emotional mastery before the final five-second execution. Solving the academy bridge only opens the journey; it does not restore humanity.
 
@@ -28,6 +28,12 @@ Ordinary casting requires the correct word and an explicit sequence of wand-dire
 Cutting and redirection each cost one of three stitches. Undo restores the last edit and its cost before execution; selecting the current target costs nothing. Execution lasts five active seconds and locks movement/editing. Dialogues, audio settings, instructions and hidden tabs pause execution. Each puzzle attempt executes once; **Reset** restores the current room's position, connections and resources while retaining the book and narrative knowledge. Ending replay restarts the entire journey.
 
 The camera is fixed and oblique orthographic; movement follows screen directions. No rotation or awkward 3D character steering is needed.
+
+The two people on spell pedestals are **frozen casters**, not spells. The **tiny orange fire ball and blue motion ball** hover separately by their wands. Aether Sight reveals each spell's editable thread to its target; selection highlights the magic, not the human body. The winged familiars are separate living creatures. Spatial labels temporarily yield when they would cover your character; the interaction name remains available in the HUD.
+
+Choose **Boy / Girl** before starting. Both use the approved serious young-adult academy artwork, the same directional walking/casting clips, and identical abilities, story and controls. The selection survives language switches, memories, room reset and adventure replay.
+
+The approved moonlit academy artwork appears behind the playable academy and memory scenes. It is decorative scenery, not a collision map: the clearly marked foreground floor, bridge, targets and exit still determine movement. Responsive cropping preserves the image's aspect ratio; mobile does not stretch its painted perspective into walkable geometry.
 
 ## Audio
 
@@ -66,15 +72,31 @@ Repository **Settings → Pages → Source → GitHub Actions** must be enabled.
 
 TypeScript, Vite and Three.js. `state.ts` handles deterministic spell editing and execution; `adventure.ts` guards narrative progression and restoration; `scene.ts` renders rooms and movement; `audio.ts` handles local synthesis and speech; `view.ts` fits the fixed camera; `input.ts` tracks keyboard and multitouch; `i18n.ts` contains both languages.
 
-Characters use original procedural placeholder sprite sheets, not final artwork. `CharacterSprite` in `character.ts` draws camera-parallel planes with bottom-center foot anchoring, shadows, alpha testing and depth occlusion.
+Characters use the user-approved original illustrated artwork in `public/characters/`, not procedural geometric icons. `CharacterSprite` in `character.ts` draws camera-parallel planes with image-foot anchoring, shadows, alpha testing and depth occlusion. The protagonist and four supporting humans have serious adult proportions; the two existing magical familiars use actual wing-flap drawings.
 
-Sheet format: **4 columns × 4 rows**. Rows face down, left, right, up; column 0 is idle, columns 1–3 walk. Align each frame's feet to the cell's bottom center. Replace its texture and adjust `height` without changing movement or puzzle logic. Walking follows actual movement distance; blocked/idle characters remain still. Reduced-motion preference disables sprite walking.
+Boy/girl sheets: **4 columns × 4 rows**, with rows facing down, left, right, up; column 0 is standing, columns 1–2 walk, and column 3 casts. Actual movement distance drives walking. Successful edits, wand-direction input and learned casting trigger a short action; five-second execution plays the casting sequence. Cast transitions reuse the supplied preparation, release and recovery key poses, not skeletal animation or image bobbing.
 
-This is a short adventure prototype, not the full RPG. Combat, elemental splicing, Backlash, persistent gameplay saves, final artwork and a larger world are not included.
+Casters use **1 column × 4 direction rows**, held still in present-day stasis. Friend/background sheets use **4 columns × 3 rows** (front, left, right), with two walking poses and a wave. Their bodies remain frozen in the present and pace/wave only in memories or after restoration. Familiar sheets use **4 columns × 1 row** for distinct wing positions. Idle humans use a single standing pose; these are short keyframe cycles, not full cinematic animation.
+
+Human cells are 256×288 pixels, familiars 320×288; the image-foot anchor is at the horizontal center and y=276. The sprite plane includes transparent padding below the feet while its local origin still contacts the ground. Reduced-motion preference holds a single pose rather than cycling frames.
+
+The approved sources are retained on `character-art-handoff`: serious humans at `ad007ac78e6022df07f8fc0bd8de51068dcd180d`, familiar source at `ab52f2cce32d8d75cebb2ccfc3a84c417bf1afe5`, and academy background at `1855ffd9db4c634af69175b89fab888c9ebfd469`. The runtime courtyard is a 1440×960 WebP, approximately 296 KB.
+
+`scripts/process-character-art.py` performs local semantic foreground segmentation, removes neighboring-frame fragments, corrects mirrored side poses, preserves the approved colors/faces and normalizes scale/feet. It never uploads source artwork to a segmentation service. To reproduce PNGs, use an isolated Python environment with `pillow`, `rembg[cpu]` and its dependencies:
+
+```bash
+python scripts/process-character-art.py serious-protagonists-source.png serious-supporting-source.png supporting-cast-source.png --cache /path/to/local-mask-cache
+```
+
+The first run downloads local segmentation model weights. Python/model tooling is not needed to build or play the game because processed runtime assets are checked in.
+
+This is a short adventure prototype, not the full RPG. Combat, elemental splicing, Backlash, persistent gameplay saves, skeletal 3D characters, longer animation sequences and a larger world are not included.
 
 ## 한국어 안내
 
 **한국어 / English** 선택기로 안내·목표·퍼즐·대사·오류를 전환해도 진행은 유지됩니다. 여신이 부탁한 마법서를 얻고, 관측실의 다리를 복구한 뒤 숲길을 지나 주문의 근원으로 가세요. 사람들만 동결되어 있고 마법 생물들은 계속 움직입니다.
+
+시작 전 **남학생 / 여학생** 외형을 선택할 수 있습니다. 승인된 진지한 청년 캐릭터 그림을 사용하며 외형에 따라 능력이나 이야기는 달라지지 않습니다. 선택은 언어 전환·회상·초기화·다시 플레이에서도 유지됩니다. 학원 그림은 실제 이동 바닥 뒤의 장식 배경이며, 그림 속 계단이 충돌 지형으로 바뀐 것은 아닙니다.
 
 회상에서는 친구에게 걸어가 감정을 마주한 뒤 현재의 위치와 편집 상태로 돌아옵니다. 배운 주문은 단어와 방향 버튼 순서가 필요하고, 마지막 마법은 두 미스터리의 이해와 감정의 숙달이 필요합니다. 방 초기화는 마법서와 이야기 지식을 지우지 않습니다. 결말의 다시 플레이는 여정 전체를 새로 시작합니다.
 

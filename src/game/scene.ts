@@ -5,18 +5,22 @@ import {
   evaluateOutcome, EXECUTION_SECONDS, SPELL_IDS,
 } from './state';
 import type { GameState, SpellId, TargetId } from './state';
-import { CharacterSprite, createPlaceholderSheet } from './character';
+import { CASTER_LAYOUT, CharacterSprite, FAMILIAR_LAYOUT, HUMAN_LAYOUT, STUDENT_LAYOUT } from './character';
+import type { Appearance, CharacterArt, CharacterRole, SpriteLayout } from './character';
 import { createBirdEyeCamera, fitBirdEyeCamera } from './view';
-import { createAdventure } from './adventure';
 import type { AdventureState, Interaction } from './adventure';
 
 const FORCE_COLOR = 0xff995a;
 const MOTION_COLOR = 0x65c9ff;
 const TARGET_COLOR = 0x9be8c4;
 const START = new THREE.Vector3(0, 0, 7);
+const CASTER_POSITIONS: Record<SpellId, THREE.Vector3> = {
+  force: new THREE.Vector3(-3, 0, 4.5),
+  motion: new THREE.Vector3(3, 0, 4.5),
+};
 const SOURCE_POSITIONS: Record<SpellId, THREE.Vector3> = {
-  force: new THREE.Vector3(-3, 1.8, 4.5),
-  motion: new THREE.Vector3(3, 1.8, 4.5),
+  force: new THREE.Vector3(-4.1, 2.8, 4.1),
+  motion: new THREE.Vector3(2.05, 2.8, 4.1),
 };
 const TARGET_POSITIONS: Record<TargetId, THREE.Vector3> = {
   anchor: new THREE.Vector3(-1.7, 0.9, 2.7),
@@ -89,9 +93,11 @@ export class GameScene {
     motion: new THREE.Mesh(),
   };
   private projectiles: Record<SpellId, THREE.Mesh> = {
-    force: new THREE.Mesh(new THREE.IcosahedronGeometry(0.23, 1), material(FORCE_COLOR, FORCE_COLOR)),
-    motion: new THREE.Mesh(new THREE.IcosahedronGeometry(0.18, 1), material(MOTION_COLOR, MOTION_COLOR)),
+    force: new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), material(FORCE_COLOR, FORCE_COLOR)),
+    motion: new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), material(MOTION_COLOR, MOTION_COLOR)),
   };
+  private sourceHalos: Record<SpellId, THREE.Mesh> = { force: new THREE.Mesh(), motion: new THREE.Mesh() };
+  private wandOrigins: Record<SpellId, THREE.Mesh> = { force: new THREE.Mesh(), motion: new THREE.Mesh() };
   private targetMarkers = new THREE.Group();
   private spellLabels = new THREE.Group();
   private localizedLabels: { sprite: THREE.Sprite; key: MessageKey; color: string }[] = [];
@@ -102,10 +108,10 @@ export class GameScene {
   };
   private seams = new THREE.Group();
   private book = new THREE.Group();
-  private scarf = new THREE.Group();
+  private memoryFragment = new THREE.Group();
   private ward = new THREE.Group();
-  private creatures = new THREE.Group();
-  private people: { character: CharacterSprite; origin: THREE.Vector3 }[] = [];
+  private creatures: { character: CharacterSprite; origin: THREE.Vector3 }[] = [];
+  private people: { character: CharacterSprite; origin: THREE.Vector3; awake: boolean }[] = [];
   private resizeObserver: ResizeObserver;
   private visualTime = 0;
   private lastSignature = '';
@@ -117,8 +123,8 @@ export class GameScene {
     { x: 1.7, z: 2.7, radius: 0.65 },
   ];
 
-  constructor(private host: HTMLElement, private adventure: AdventureState = createAdventure()) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  constructor(private host: HTMLElement, private adventure: AdventureState, private art: CharacterArt, private appearance: Appearance) {
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -127,7 +133,8 @@ export class GameScene {
     this.renderer.domElement.dataset.view = 'fixed-bird-eye';
     this.renderer.domElement.setAttribute('aria-label', t('cameraAria'));
     this.host.append(this.renderer.domElement);
-    this.scene.background = new THREE.Color(0x0a101b);
+    this.host.dataset.appearance = appearance;
+    this.scene.background = adventure.chapter === 'academy' ? null : new THREE.Color(0x0a101b);
     this.scene.fog = new THREE.Fog(0x0a101b, 42, 70);
     this.scene.add(new THREE.HemisphereLight(0xc7d8ff, 0x37304c, 2.4));
     const moon = new THREE.DirectionalLight(0xc7d9ff, 3.5);
@@ -136,7 +143,7 @@ export class GameScene {
     this.buildRoom();
     if (adventure.chapter === 'academy') this.buildSpells();
     this.buildAdventure();
-    this.playerSprite = new CharacterSprite(createPlaceholderSheet('#9380bb', '#afe6d7', true), this.camera);
+    this.playerSprite = this.makeCharacter(appearance, STUDENT_LAYOUT);
     this.buildPlayer();
     this.reset();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -267,7 +274,7 @@ export class GameScene {
       place(this.scene, box(1.7, 2.7, 0.12, material(0x96ebcd, 0x376c61)), 0, 1.35, -8);
       place(this.scene, this.makeLabel('exitLabel', '#b9ead7'), 0, 3, -8);
     }
-    if (memory) this.scene.background = new THREE.Color(0x302d39);
+    if (memory) this.scene.background = null;
   }
 
   private buildAdventure(): void {
@@ -276,36 +283,46 @@ export class GameScene {
       place(this.book, box(0.6, 0.13, 0.75, material(0xbba375, 0x473d23)), 0, 0.45, 6);
       place(this.book, this.makeLabel('bookAction', '#efdaa7'), 0, 1.4, 6);
       this.scene.add(this.book);
-      place(this.scarf, box(0.55, 0.06, 0.25, material(0xca8892)), -4.2, 0.08, 7);
-      place(this.scarf, this.makeLabel('memoryAction', '#ebc1c8'), -4, 0.9, 7.5);
-      this.scene.add(this.scarf);
+      this.memoryFragment.position.set(-4.2, 0, 7);
+      place(this.memoryFragment, new THREE.Mesh(new THREE.OctahedronGeometry(0.28),
+        material(0xe4baf5, 0x68466a)), 0, 0.5, 0);
+      place(this.memoryFragment, new THREE.Mesh(new THREE.OctahedronGeometry(0.4),
+        new THREE.MeshBasicMaterial({ color: 0xe4baf5, transparent: true, opacity: 0.16, depthWrite: false })), 0, 0.5, 0);
+      const memoryRing = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.02, 6, 24),
+        new THREE.MeshBasicMaterial({ color: 0xe4baf5, transparent: true, opacity: 0.65 }));
+      memoryRing.rotation.x = -Math.PI / 2;
+      place(this.memoryFragment, memoryRing, 0, 0.06, 0);
+      place(this.memoryFragment, this.makeLabel('memoryLabel', '#ebc1f8'), 0.2, 0.05, 1.4);
+      this.scene.add(this.memoryFragment);
     }
     const positions = chapter === 'memory' ? [[0, 3], [-3, -4]] :
       chapter === 'academy' ? [[-4.2, 6], [4, -4]] : [[-3.8, 5], [3.8, -4]];
-    for (const [x, z] of positions) {
-      const character = new CharacterSprite(createPlaceholderSheet('#ab8c79', '#e6c79a'), this.camera);
+    for (const [index, [x, z]] of positions.entries()) {
+      const character = this.makeCharacter(index === 0 ? 'friend' : 'backgroundStudent', HUMAN_LAYOUT);
       character.mesh.position.set(x, 0.025, z);
       this.scene.add(character.mesh);
-      this.people.push({ character, origin: character.mesh.position.clone() });
+      this.people.push({ character, origin: character.mesh.position.clone(), awake: false });
     }
     if (chapter === 'memory') place(this.scene, this.makeLabel('friendAction', '#f2d6ba'), 0, 2.3, 3);
     for (let i = 0; i < 2; i++) {
-      const creature = new THREE.Group();
-      creature.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8),
-        material(i === 0 ? 0xa6e8ce : 0xabb7ff, 0x345b62)));
-      for (const x of [-0.3, 0.3]) {
-        const wing = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), material(0xccdcf3));
-        wing.scale.set(1.4, 0.15, 0.7);
-        place(creature, wing, x, 0, 0);
-      }
-      creature.position.set(i === 0 ? -2 : 2, 1.6, i === 0 ? 0 : -5);
-      this.creatures.add(creature);
+      const character = this.makeCharacter(i === 0 ? 'mintFamiliar' : 'lavenderFamiliar', FAMILIAR_LAYOUT, 1.7);
+      character.mesh.position.set(i === 0 ? -2 : 2, 1.3, i === 0 ? 0 : -5);
+      this.scene.add(character.mesh);
+      this.creatures.push({ character, origin: character.mesh.position.clone() });
     }
-    this.scene.add(this.creatures);
   }
 
   getPosition(): THREE.Vector3 { return this.player.position.clone(); }
   setPosition(position: THREE.Vector3): void { this.player.position.copy(position); }
+
+  playPlayerAction(): void { this.playerSprite.playAction(); }
+
+  waveFriend(): void {
+    if (this.adventure.chapter === 'memory' || this.adventure.restored) {
+      this.people[0]?.character.face('down');
+      this.people[0]?.character.playAction();
+    }
+  }
 
   interaction(state: GameState): Interaction | null {
     if (state.phase === 'executing' || this.adventure.restored) return null;
@@ -328,25 +345,35 @@ export class GameScene {
   private buildSpells(): void {
     for (const id of SPELL_IDS) {
       const group = this.sourceGroups[id];
-      group.position.set(SOURCE_POSITIONS[id].x, 0, SOURCE_POSITIONS[id].z);
+      group.position.copy(CASTER_POSITIONS[id]);
       place(group, new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 0.3, 8), material(0x607087)), 0, 0.1, 0);
-      const caster = new CharacterSprite(createPlaceholderSheet(
-        id === 'force' ? '#b26850' : '#548ab6',
-        id === 'force' ? '#ffc18a' : '#a4e1ff',
-      ), this.camera);
+      const caster = this.makeCharacter(id === 'force' ? 'fireCaster' : 'motionCaster', CASTER_LAYOUT);
       caster.mesh.position.y = 0.27;
       group.add(caster.mesh);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.03, 6, 28), material(COLORS[id], COLORS[id]));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.03, 6, 28),
+        new THREE.MeshBasicMaterial({ color: COLORS[id], transparent: true, opacity: 0.9, toneMapped: false }));
       ring.quaternion.copy(this.camera.quaternion);
-      place(group, ring, 0, 1.8, 0);
+      ring.position.copy(SOURCE_POSITIONS[id]);
+      this.sourceHalos[id] = ring;
+      this.scene.add(ring);
+      place(group, this.makeLabel(id === 'force' ? 'forceCasterLabel' : 'motionCasterLabel',
+        id === 'force' ? '#ffb781' : '#89d8ff'), 0, 0.2, 1.1);
       this.scene.add(group);
+      // The supplied front caster frames share a wand tip near image pixel (66, 76).
+      const wandTip = caster.mesh.localToWorld(new THREE.Vector3((66 - 128) * 2.5 / 288, (276 - 76) * 2.5 / 288, 0));
+      const origin = new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.LineCurve3(wandTip, SOURCE_POSITIONS[id]), 1, 0.015, 6, false),
+        new THREE.MeshBasicMaterial({ color: COLORS[id], transparent: true, opacity: 0.6, toneMapped: false }),
+      );
+      this.wandOrigins[id] = origin;
+      this.scene.add(origin);
       const light = new THREE.PointLight(COLORS[id], 4, 5);
       light.position.copy(SOURCE_POSITIONS[id]);
       this.scene.add(light);
       this.projectiles[id].position.copy(SOURCE_POSITIONS[id]);
       this.scene.add(this.projectiles[id]);
       const text = this.makeLabel(id === 'force' ? 'forceLabel' : 'motionLabel', id === 'force' ? '#ffb781' : '#89d8ff');
-      place(this.spellLabels, text, group.position.x, 0.2, group.position.z + 1.1);
+      place(this.spellLabels, text, SOURCE_POSITIONS[id].x, SOURCE_POSITIONS[id].y + 0.75, SOURCE_POSITIONS[id].z);
       this.threads[id].material = new THREE.MeshBasicMaterial({ color: COLORS[id], transparent: true, opacity: 0.85 });
       this.scene.add(this.threads[id]);
     }
@@ -364,6 +391,12 @@ export class GameScene {
       this.targetRings[id] = ring;
     }
     this.scene.add(this.targetMarkers);
+  }
+
+  private makeCharacter(role: CharacterRole, layout: SpriteLayout, height = 2.5): CharacterSprite {
+    const character = new CharacterSprite(this.art[role].clone(), this.camera, height, layout);
+    character.mesh.userData.role = role;
+    return character;
   }
 
   private buildPlayer(): void {
@@ -428,8 +461,8 @@ export class GameScene {
     let distance = 2.5;
     for (const id of SPELL_IDS) {
       const d = Math.hypot(
-        this.player.position.x - SOURCE_POSITIONS[id].x,
-        this.player.position.z - SOURCE_POSITIONS[id].z,
+        this.player.position.x - CASTER_POSITIONS[id].x,
+        this.player.position.z - CASTER_POSITIONS[id].z,
       );
       if (d < distance) { nearest = id; distance = d; }
     }
@@ -440,6 +473,22 @@ export class GameScene {
     return Math.hypot(this.player.position.x, this.player.position.z + 8) < 1.2;
   }
 
+  private keepPlayerLegible(): void {
+    const geometry = this.playerSprite.mesh.geometry;
+    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    const bounds = geometry.boundingBox;
+    if (!bounds) throw new Error(t('errorRendering'));
+    const position = new THREE.Vector3();
+    // World labels yield to the player; interaction names remain available in the HUD.
+    for (const { sprite } of this.localizedLabels) {
+      this.playerSprite.mesh.worldToLocal(sprite.getWorldPosition(position));
+      const halfWidth = sprite.scale.x / 2 + 0.08;
+      const halfHeight = sprite.scale.y / 2 + 0.08;
+      sprite.visible = position.x + halfWidth < bounds.min.x || position.x - halfWidth > bounds.max.x ||
+        position.y + halfHeight < bounds.min.y || position.y - halfHeight > bounds.max.y;
+    }
+  }
+
   render(state: GameState, sight: boolean, selected: SpellId | null, seconds: number): void {
     const x = this.player.position.x.toFixed(2);
     const z = this.player.position.z.toFixed(2);
@@ -447,24 +496,34 @@ export class GameScene {
     if (this.host.dataset.playerZ !== z) this.host.dataset.playerZ = z;
     this.visualTime += seconds;
     this.book.visible = !this.adventure.bookFound;
-    this.scarf.visible = !this.adventure.memorySeen;
+    this.memoryFragment.visible = !this.adventure.memorySeen;
+    this.host.dataset.memoryObject = this.adventure.chapter === 'academy' && !this.adventure.memorySeen ? 'fragment' : 'none';
     this.ward.visible = !this.adventure.lightLearned;
-    for (const [i, creature] of this.creatures.children.entries()) {
-      creature.position.x = (i === 0 ? -2 : 2) + Math.sin(this.visualTime * 0.65 + i) * 0.65;
-      creature.position.y = 1.6 + Math.sin(this.visualTime * 2 + i) * 0.12;
-      creature.children[1].rotation.z = Math.sin(this.visualTime * 7) * 0.3;
-      creature.children[2].rotation.z = -Math.sin(this.visualTime * 7) * 0.3;
+    for (const [i, { character, origin }] of this.creatures.entries()) {
+      character.mesh.position.x = origin.x + Math.sin(this.visualTime * 0.65 + i) * 0.65;
+      character.mesh.position.y = origin.y + Math.sin(this.visualTime * 2 + i) * 0.08;
+      character.animate(!this.reducedMotion, seconds);
     }
-    for (const { character, origin } of this.people) {
+    for (const person of this.people) {
+      const { character, origin } = person;
       const awake = this.adventure.chapter === 'memory' || this.adventure.restored;
-      character.mesh.material.color.set(awake ? 0xffffff : 0x8793a8);
+      if (awake && !person.awake) character.playAction();
+      person.awake = awake;
       const previous = character.mesh.position.x;
-      character.mesh.position.x = origin.x + (awake ? Math.sin(this.visualTime * 0.6) * 0.1 : 0);
+      character.mesh.position.x = origin.x + (awake ? Math.sin(this.visualTime * 0.9) * 0.35 : 0);
       character.move(character.mesh.position.x - previous, 0);
-      character.animate(awake && !this.reducedMotion);
+      character.animate(awake && !this.reducedMotion, seconds);
     }
+    this.playerSprite.setCasting(state.phase === 'executing');
+    this.playerSprite.animate(!this.reducedMotion, seconds);
+    this.host.dataset.playerClip = this.playerSprite.clip;
+    this.host.dataset.playerFrame = String(this.playerSprite.frame);
+    this.host.dataset.familiarFrame = String(this.creatures[0]?.character.frame ?? 0);
+    this.host.dataset.humans = this.adventure.chapter === 'memory' || this.adventure.restored ? 'awake' : 'frozen';
+    this.host.dataset.motionSpellShape = this.projectiles.motion.geometry.type;
+    this.host.dataset.fireSpellShape = this.projectiles.force.geometry.type;
+    this.keepPlayerLegible();
     if (this.adventure.chapter !== 'academy') {
-      this.playerSprite.animate(!this.reducedMotion && state.phase !== 'executing' && !this.adventure.restored);
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -487,10 +546,14 @@ export class GameScene {
       const spell = state.spells[id];
       this.threads[id].visible = sight && spell.connected;
       this.projectiles[id].visible = spell.connected;
+      this.wandOrigins[id].visible = spell.connected && state.phase === 'editing';
       this.projectiles[id].position.copy(SOURCE_POSITIONS[id]).lerp(TARGET_POSITIONS[spell.target], travel);
       if (state.phase !== 'editing' && progress > 0.6) this.projectiles[id].visible = false;
       const scale = selected === id ? 1.15 : 1;
-      this.sourceGroups[id].scale.setScalar(scale);
+      this.sourceHalos[id].scale.setScalar(scale);
+      this.projectiles[id].scale.setScalar(scale);
+      const haloMaterial = this.sourceHalos[id].material;
+      if (haloMaterial instanceof THREE.MeshBasicMaterial) haloMaterial.opacity = spell.connected ? 0.9 : 0.2;
     }
     this.spellLabels.visible = sight;
     this.targetMarkers.visible = sight;
@@ -514,7 +577,6 @@ export class GameScene {
       this.projectiles.force.rotation.y = this.visualTime * 0.35;
       this.projectiles.motion.rotation.y = -this.visualTime * 0.35;
     }
-    this.playerSprite.animate(!this.reducedMotion && state.phase !== 'executing' && !state.won);
     this.renderer.render(this.scene, this.camera);
   }
 

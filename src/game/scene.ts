@@ -7,6 +7,8 @@ import {
 import type { GameState, SpellId, TargetId } from './state';
 import { CharacterSprite, createPlaceholderSheet } from './character';
 import { createBirdEyeCamera, fitBirdEyeCamera } from './view';
+import { createAdventure } from './adventure';
+import type { AdventureState, Interaction } from './adventure';
 
 const FORCE_COLOR = 0xff995a;
 const MOTION_COLOR = 0x65c9ff;
@@ -99,6 +101,11 @@ export class GameScene {
     mechanism: new THREE.Mesh(),
   };
   private seams = new THREE.Group();
+  private book = new THREE.Group();
+  private scarf = new THREE.Group();
+  private ward = new THREE.Group();
+  private creatures = new THREE.Group();
+  private people: { character: CharacterSprite; origin: THREE.Vector3 }[] = [];
   private resizeObserver: ResizeObserver;
   private visualTime = 0;
   private lastSignature = '';
@@ -110,7 +117,7 @@ export class GameScene {
     { x: 1.7, z: 2.7, radius: 0.65 },
   ];
 
-  constructor(private host: HTMLElement) {
+  constructor(private host: HTMLElement, private adventure: AdventureState = createAdventure()) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -127,8 +134,9 @@ export class GameScene {
     moon.position.set(-3, 12, -5);
     this.scene.add(moon);
     this.buildRoom();
-    this.buildSpells();
-    this.playerSprite = new CharacterSprite(createPlaceholderSheet('#9380bb', '#afe6d7'), this.camera);
+    if (adventure.chapter === 'academy') this.buildSpells();
+    this.buildAdventure();
+    this.playerSprite = new CharacterSprite(createPlaceholderSheet('#9380bb', '#afe6d7', true), this.camera);
     this.buildPlayer();
     this.reset();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -151,6 +159,10 @@ export class GameScene {
   }
 
   private buildRoom(): void {
+    if (this.adventure.chapter !== 'academy') {
+      this.buildJourneyRoom();
+      return;
+    }
     const stone = material(0x39475e);
     const edge = material(0x777993);
     const gold = material(0xb49b6c);
@@ -160,6 +172,7 @@ export class GameScene {
     for (const z of [2.5, -1.5]) {
       place(this.scene, box(12, 0.14, 0.15, gold), 0, 0.01, z);
     }
+
     for (let z = -9; z <= 9; z += 1.5) {
       if (z > -1.5 && z < 2.5) continue;
       for (let x = -5; x <= 5; x += 1.5) {
@@ -221,6 +234,95 @@ export class GameScene {
     }
     const banner = this.makeLabel('roomName', '#ddc799');
     place(this.scene, banner, 0, 4.8, -9.2);
+  }
+
+  private buildJourneyRoom(): void {
+    const memory = this.adventure.chapter === 'memory';
+    const source = this.adventure.chapter === 'source';
+    const ground = material(memory ? 0x827164 : source ? 0x3b3b60 : 0x334b48);
+    place(this.scene, box(12, 0.7, 20, ground), 0, -0.35, 0);
+    place(this.scene, box(3.5, 0.025, 19, material(memory ? 0xb89e78 : 0x76817e)), 0, 0.01, 0);
+    for (const x of [-5.2, 5.2]) for (const z of [-7, -2, 3, 8]) {
+      if (memory) {
+        place(this.scene, box(0.7, 2.5, 0.7, material(0x806950)), x, 1.25, z);
+      } else {
+        place(this.scene, box(0.3, 1.7, 0.3, material(0x614e55)), x, 0.85, z);
+        const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(0.85, 0), material(source ? 0x71587e : 0x517c74));
+        place(this.scene, crown, x, 1.9, z);
+      }
+    }
+    if (this.adventure.chapter === 'path') {
+      place(this.ward, box(10.5, 1.7, 0.22, material(0x33264a, 0x221230)), 0, 0.85, 2.2);
+      place(this.ward, this.makeLabel('wardAction', '#bbdcff'), 0, 2, 2.2);
+      this.scene.add(this.ward);
+    }
+    if (source) {
+      for (const x of [-3, 3]) {
+        place(this.scene, box(0.8, 1, 0.8, material(0x70708e)), x, 0.5, 2);
+        place(this.scene, this.makeLabel(x < 0 ? 'reasonAction' : 'motiveAction', '#dfc799'), x, 1.8, 2);
+      }
+      place(this.scene, new THREE.Mesh(new THREE.OctahedronGeometry(1), material(0xb686ba, 0x4e2359)), 0, 1.4, -6);
+      place(this.scene, this.makeLabel('sourceAction', '#e7bbed'), 0, 3, -6);
+    } else if (!memory) {
+      place(this.scene, box(1.7, 2.7, 0.12, material(0x96ebcd, 0x376c61)), 0, 1.35, -8);
+      place(this.scene, this.makeLabel('exitLabel', '#b9ead7'), 0, 3, -8);
+    }
+    if (memory) this.scene.background = new THREE.Color(0x302d39);
+  }
+
+  private buildAdventure(): void {
+    const chapter = this.adventure.chapter;
+    if (chapter === 'academy') {
+      place(this.book, box(0.6, 0.13, 0.75, material(0xbba375, 0x473d23)), 0, 0.45, 6);
+      place(this.book, this.makeLabel('bookAction', '#efdaa7'), 0, 1.4, 6);
+      this.scene.add(this.book);
+      place(this.scarf, box(0.55, 0.06, 0.25, material(0xca8892)), -4.2, 0.08, 7);
+      place(this.scarf, this.makeLabel('memoryAction', '#ebc1c8'), -4, 0.9, 7.5);
+      this.scene.add(this.scarf);
+    }
+    const positions = chapter === 'memory' ? [[0, 3], [-3, -4]] :
+      chapter === 'academy' ? [[-4.2, 6], [4, -4]] : [[-3.8, 5], [3.8, -4]];
+    for (const [x, z] of positions) {
+      const character = new CharacterSprite(createPlaceholderSheet('#ab8c79', '#e6c79a'), this.camera);
+      character.mesh.position.set(x, 0.025, z);
+      this.scene.add(character.mesh);
+      this.people.push({ character, origin: character.mesh.position.clone() });
+    }
+    if (chapter === 'memory') place(this.scene, this.makeLabel('friendAction', '#f2d6ba'), 0, 2.3, 3);
+    for (let i = 0; i < 2; i++) {
+      const creature = new THREE.Group();
+      creature.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8),
+        material(i === 0 ? 0xa6e8ce : 0xabb7ff, 0x345b62)));
+      for (const x of [-0.3, 0.3]) {
+        const wing = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), material(0xccdcf3));
+        wing.scale.set(1.4, 0.15, 0.7);
+        place(creature, wing, x, 0, 0);
+      }
+      creature.position.set(i === 0 ? -2 : 2, 1.6, i === 0 ? 0 : -5);
+      this.creatures.add(creature);
+    }
+    this.scene.add(this.creatures);
+  }
+
+  getPosition(): THREE.Vector3 { return this.player.position.clone(); }
+  setPosition(position: THREE.Vector3): void { this.player.position.copy(position); }
+
+  interaction(state: GameState): Interaction | null {
+    if (state.phase === 'executing' || this.adventure.restored) return null;
+    const near = (x: number, z: number, radius = 2) =>
+      Math.hypot(this.player.position.x - x, this.player.position.z - z) < radius;
+    switch (this.adventure.chapter) {
+      case 'academy':
+        if (!this.adventure.bookFound && near(0, 6)) return 'book';
+        if (!this.adventure.memorySeen && near(-4.2, 7)) return 'memory';
+        return this.nearestSpell();
+      case 'path': return near(0, 3.2, 2.6) ? 'ward' : null;
+      case 'memory': return near(0, 3) ? 'friend' : null;
+      case 'source':
+        if (near(-3, 2)) return 'reason';
+        if (near(3, 2)) return 'motive';
+        return near(0, -6, 2.3) ? 'source' : null;
+    }
   }
 
   private buildSpells(): void {
@@ -302,12 +404,14 @@ export class GameScene {
 
   private canStand(x: number, z: number, state: GameState): boolean {
     if (Math.abs(x) > 5.15 || z > 9.1 || z < -9.1) return false;
+    if (this.adventure.chapter === 'path' && !this.adventure.lightLearned && z < 2.6) return false;
+    if (this.adventure.chapter !== 'academy') return true;
     if (z < 2.55 && z > -1.55 && !(state.outcome?.safe && Math.abs(x) < 0.93)) return false;
     return this.collisions.every((obstacle) => Math.hypot(x - obstacle.x, z - obstacle.z) > obstacle.radius + 0.28);
   }
 
   move(x: number, y: number, seconds: number, state: GameState): void {
-    if (state.phase === 'executing' || state.won) return;
+    if (state.phase === 'executing' || state.won || this.adventure.restored) return;
     const speed = 3.2;
     const dx = x * speed * seconds;
     const dz = -y * speed * seconds;
@@ -319,6 +423,7 @@ export class GameScene {
   }
 
   nearestSpell(): SpellId | null {
+    if (this.adventure.chapter !== 'academy') return null;
     let nearest: SpellId | null = null;
     let distance = 2.5;
     for (const id of SPELL_IDS) {
@@ -336,7 +441,33 @@ export class GameScene {
   }
 
   render(state: GameState, sight: boolean, selected: SpellId | null, seconds: number): void {
+    const x = this.player.position.x.toFixed(2);
+    const z = this.player.position.z.toFixed(2);
+    if (this.host.dataset.playerX !== x) this.host.dataset.playerX = x;
+    if (this.host.dataset.playerZ !== z) this.host.dataset.playerZ = z;
     this.visualTime += seconds;
+    this.book.visible = !this.adventure.bookFound;
+    this.scarf.visible = !this.adventure.memorySeen;
+    this.ward.visible = !this.adventure.lightLearned;
+    for (const [i, creature] of this.creatures.children.entries()) {
+      creature.position.x = (i === 0 ? -2 : 2) + Math.sin(this.visualTime * 0.65 + i) * 0.65;
+      creature.position.y = 1.6 + Math.sin(this.visualTime * 2 + i) * 0.12;
+      creature.children[1].rotation.z = Math.sin(this.visualTime * 7) * 0.3;
+      creature.children[2].rotation.z = -Math.sin(this.visualTime * 7) * 0.3;
+    }
+    for (const { character, origin } of this.people) {
+      const awake = this.adventure.chapter === 'memory' || this.adventure.restored;
+      character.mesh.material.color.set(awake ? 0xffffff : 0x8793a8);
+      const previous = character.mesh.position.x;
+      character.mesh.position.x = origin.x + (awake ? Math.sin(this.visualTime * 0.6) * 0.1 : 0);
+      character.move(character.mesh.position.x - previous, 0);
+      character.animate(awake && !this.reducedMotion);
+    }
+    if (this.adventure.chapter !== 'academy') {
+      this.playerSprite.animate(!this.reducedMotion && state.phase !== 'executing' && !this.adventure.restored);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
     const signature = SPELL_IDS.map((id) => `${id}:${state.spells[id].connected}:${state.spells[id].target}`).join('|');
     if (signature !== this.lastSignature) {
       for (const id of SPELL_IDS) {

@@ -20,7 +20,7 @@ export function footAnchoredGeometry(width: number, height: number): THREE.Plane
 }
 
 // Placeholder atlas: four direction rows, idle in column 0 and walking in columns 1-3.
-export function createPlaceholderSheet(coat: string, trim: string): THREE.CanvasTexture {
+export function createPlaceholderSheet(coat: string, trim: string, wand = false): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 128 * FRAME_COLUMNS;
   canvas.height = 160 * 4;
@@ -83,6 +83,18 @@ export function createPlaceholderSheet(coat: string, trim: string): THREE.Canvas
       ctx.lineTo(57, 85);
       ctx.closePath();
       ctx.fill();
+      if (wand) {
+        ctx.strokeStyle = '#f0d5a2';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(99, 128);
+        ctx.lineTo(110, 78);
+        ctx.stroke();
+        ctx.fillStyle = trim;
+        ctx.beginPath();
+        ctx.arc(110, 78, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }

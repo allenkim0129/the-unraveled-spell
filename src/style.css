@@ -86,6 +86,17 @@ progress { display: block; width: 100%; height: 5px; accent-color: var(--mint); 
 .editor-note { color: #a4b3c9; font-size: 10px; line-height: 1.8; margin-top: 12px; }
 .sidebar-bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
 .undo-button { width: 100%; }
+.journal-button { width: 100%; margin-bottom: 8px; }
+.name-label { display: grid; gap: 8px; margin: 15px 0; font-size: 12px; color: #cbd6e7; }
+.name-label input, .name-label select { font: inherit; background: #18263b; border: 1px solid var(--border); border-radius: 6px; padding: 10px; color: #e9e9ef; min-height: 44px; }
+.story-body { line-height: 1.9; font-size: 14px; color: #ced8e7; white-space: pre-line; }
+.story-choices { display: grid; gap: 10px; margin-top: 20px; }
+.journal-progress { white-space: pre-line; line-height: 2; font-size: 12px; color: var(--gold); }
+.gesture-buttons { display: flex; gap: 8px; margin: 12px 0; }
+.gesture-buttons button { min-width: 48px; min-height: 48px; color: #d6e6f5; background: #24364f; border: 1px solid var(--border); border-radius: 6px; font-size: 24px; }
+#gesture-sequence { display: block; font-size: 22px; min-height: 30px; color: var(--gold); margin-top: 12px; }
+.success-card { max-height: 90%; overflow-y: auto; }
+.success-card blockquote { font-size: 13px; color: var(--gold); line-height: 1.8; margin: 18px 0; }
 .legend { font-size: 10px; color: #b9c5d6; margin-top: 21px; display: flex; align-items: center; gap: 7px; }
 .force-dot, .motion-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff995a; }
 .motion-dot { background: #65c9ff; margin-left: 16px; }
@@ -157,6 +168,7 @@ small { display: block; color: #96a5bb; font-size: 9px; text-align: center; marg
   .editor-note { font-size: 9px; margin-top: 7px; }
   .editor-note br { display: none; }
   .sidebar-bottom { position: fixed; top: 73px; right: 15px; border: 0; padding: 0; pointer-events: auto; }
+  .journal-button { font-size: 10px; padding: 8px 10px; min-height: 44px; }
   .undo-button { font-size: 10px; padding: 8px 10px; min-height: 44px; }
   .top-hud { top: 17px; left: 16px; right: 16px; display: block; }
   .room-title .eyebrow { font-size: 8px; }
@@ -233,3 +245,11 @@ small { display: block; color: #96a5bb; font-size: 9px; text-align: center; marg
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+.audio-status { font-size: 11px; line-height: 1.6; color: #bbc8d8; }
+.voice-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.volume-control { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 22px; font-size: 13px; }
+.volume-control input { grid-column: 1; width: 100%; accent-color: #b8a1f2; }
+.volume-control output { grid-column: 2; grid-row: 2; }
+#audio-dialog p { line-height: 1.7; }
+.ambient-caption { position: absolute; left: 50%; bottom: 180px; transform: translateX(-50%); width: max-content; max-width: 80%; padding: 8px 12px; background: #101827ed; border-radius: 8px; color: #dae4f1; font-size: 12px; pointer-events: none; }

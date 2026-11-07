@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { t } from '../i18n';
 import type { MessageKey } from '../i18n';
 import {
-  evaluateOutcome, EXECUTION_SECONDS, SPELL_IDS, SPELL_NAMES, TARGET_NAMES,
+  evaluateOutcome, EXECUTION_SECONDS, SPELL_IDS,
 } from './state';
 import type { GameState, SpellId, TargetId } from './state';
+import { CharacterSprite, createPlaceholderSheet } from './character';
+import { createBirdEyeCamera, fitBirdEyeCamera } from './view';
 
 const FORCE_COLOR = 0xff995a;
 const MOTION_COLOR = 0x65c9ff;
@@ -45,7 +47,7 @@ function labelTexture(text: string, color: string): THREE.CanvasTexture {
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
   ctx.strokeRect(2, 2, 508, 76);
-  ctx.font = 'bold 27px sans-serif';
+  ctx.font = 'bold 44px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = color;
@@ -62,15 +64,16 @@ function label(text: string, color: string): THREE.Sprite {
     depthTest: false,
     transparent: true,
   }));
-  sprite.scale.set(2.35, 0.37, 1);
+  sprite.scale.set(3.1, 0.65, 1);
   return sprite;
 }
 
 export class GameScene {
   readonly renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(58, 1, 0.1, 90);
+  private camera = createBirdEyeCamera();
   private player = new THREE.Group();
+  private playerSprite: CharacterSprite;
   private bridge = new THREE.Group();
   private anchor = new THREE.Group();
   private debris = new THREE.Group();
@@ -97,14 +100,9 @@ export class GameScene {
   };
   private seams = new THREE.Group();
   private resizeObserver: ResizeObserver;
-  private yaw = 0;
-  private pitch = 0.42;
-  private cameraDistance = 5.8;
   private visualTime = 0;
   private lastSignature = '';
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  private temporaryPosition = new THREE.Vector3();
-  private cameraTarget = new THREE.Vector3();
   private collisions = [
     { x: -3, z: 4.5, radius: 0.8 },
     { x: 3, z: 4.5, radius: 0.8 },
@@ -119,16 +117,18 @@ export class GameScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
     this.renderer.domElement.dataset.i18nAria = 'cameraAria';
+    this.renderer.domElement.dataset.view = 'fixed-bird-eye';
     this.renderer.domElement.setAttribute('aria-label', t('cameraAria'));
     this.host.append(this.renderer.domElement);
     this.scene.background = new THREE.Color(0x0a101b);
-    this.scene.fog = new THREE.Fog(0x0a101b, 16, 42);
+    this.scene.fog = new THREE.Fog(0x0a101b, 42, 70);
     this.scene.add(new THREE.HemisphereLight(0xc7d8ff, 0x37304c, 2.4));
     const moon = new THREE.DirectionalLight(0xc7d9ff, 3.5);
     moon.position.set(-3, 12, -5);
     this.scene.add(moon);
     this.buildRoom();
     this.buildSpells();
+    this.playerSprite = new CharacterSprite(createPlaceholderSheet('#9380bb', '#afe6d7'), this.camera);
     this.buildPlayer();
     this.reset();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -155,8 +155,8 @@ export class GameScene {
     const edge = material(0x777993);
     const gold = material(0xb49b6c);
     const dark = material(0x1a2335);
-    place(this.scene, box(12, 0.7, 7.7, stone), 0, -0.45, 6.25);
-    place(this.scene, box(12, 0.7, 8.6, stone), 0, -0.45, -5.7);
+    place(this.scene, box(12, 0.7, 7.7, stone), 0, -0.35, 6.25);
+    place(this.scene, box(12, 0.7, 8.6, stone), 0, -0.35, -5.7);
     for (const z of [2.5, -1.5]) {
       place(this.scene, box(12, 0.14, 0.15, gold), 0, 0.01, z);
     }
@@ -164,21 +164,18 @@ export class GameScene {
       if (z > -1.5 && z < 2.5) continue;
       for (let x = -5; x <= 5; x += 1.5) {
         const seam = box(1.42, 0.015, 1.42, material((Math.round(x + z) % 2) ? 0x45516a : 0x3a465d));
-        place(this.seams, seam, x, -0.085, z);
+        place(this.seams, seam, x, 0.0075, z);
       }
     }
     this.scene.add(this.seams);
     for (const x of [-5.8, 5.8]) {
-      place(this.scene, box(0.35, 2.4, 20, dark), x, 1.1, 0);
+      place(this.scene, box(0.35, 0.55, 20, dark), x, 0.2, 0);
       for (let z = -8; z <= 8; z += 4) {
-        place(this.scene, box(0.75, 5.8, 0.75, stone), x, 2.75, z);
-        place(this.scene, box(1, 0.3, 1, edge), x, 5.5, z);
-        place(this.scene, box(0.2, 3.5, 0.2, gold), x + (x < 0 ? 0.42 : -0.42), 2.7, z);
-        const window = box(0.04, 2.5, 1.9, material(0x375986, 0x193350));
-        place(this.scene, window, x + (x < 0 ? 0.2 : -0.2), 3.1, z + 2);
-        const point = box(0.04, 1.25, 1.25, material(0x446696, 0x193350));
-        point.rotation.x = Math.PI / 4;
-        place(this.scene, point, x + (x < 0 ? 0.21 : -0.21), 4.45, z + 2);
+        place(this.scene, box(0.75, 1.4, 0.75, stone), x, 0.6, z);
+        place(this.scene, box(1, 0.2, 1, edge), x, 1.3, z);
+        place(this.scene, box(0.16, 0.8, 0.16, gold), x + (x < 0 ? 0.42 : -0.42), 0.6, z);
+        const window = box(0.04, 0.4, 1.9, material(0x375986, 0x193350));
+        place(this.scene, window, x + (x < 0 ? 0.2 : -0.2), 0.32, z + 2);
       }
     }
     for (const z of [-9.8, 9.8]) place(this.scene, box(12, 1.2, 0.3, dark), 0, 0.45, z);
@@ -188,7 +185,7 @@ export class GameScene {
       place(this.bridge, board, 0, 0, -0.26 - i * 0.5);
     }
     for (const x of [-1.15, 1.15]) place(this.bridge, box(0.1, 0.15, 4, gold), x, 0.05, -2);
-    this.bridge.position.set(0, -0.1, 2.5);
+    this.bridge.position.set(0, -0.085, 2.5);
     this.scene.add(this.bridge);
     place(this.anchor, box(0.8, 0.8, 0.8, gold), 0, 0.4, 0);
     const anchorCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), material(TARGET_COLOR, 0x254f48));
@@ -213,7 +210,7 @@ export class GameScene {
     place(this.exit, box(2.2, 0.25, 0.5, gold), 0, 3.2, 0);
     const portal = box(1.7, 2.9, 0.07, doorMat);
     place(this.exit, portal, 0, 1.4, 0);
-    const exitLabel = this.makeLabel('exitName', '#9be8c4');
+    const exitLabel = this.makeLabel('exitLabel', '#9be8c4');
     place(this.exit, exitLabel, 0, 3.65, 0);
     this.exit.position.set(0, 0, -8);
     this.scene.add(this.exit);
@@ -231,14 +228,14 @@ export class GameScene {
       const group = this.sourceGroups[id];
       group.position.set(SOURCE_POSITIONS[id].x, 0, SOURCE_POSITIONS[id].z);
       place(group, new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 0.3, 8), material(0x607087)), 0, 0.1, 0);
-      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.33, 1.1, 8), material(id === 'force' ? 0x914e46 : 0x476997));
-      place(group, robe, 0, 0.85, 0);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), material(0xaaa6b2));
-      place(group, head, 0, 1.5, 0);
-      const arm = box(0.6, 0.12, 0.12, material(0xaaa6b2));
-      arm.rotation.z = id === 'force' ? -0.5 : 0.5;
-      place(group, arm, id === 'force' ? 0.3 : -0.3, 1.3, -0.15);
+      const caster = new CharacterSprite(createPlaceholderSheet(
+        id === 'force' ? '#b26850' : '#548ab6',
+        id === 'force' ? '#ffc18a' : '#a4e1ff',
+      ), this.camera);
+      caster.mesh.position.y = 0.27;
+      group.add(caster.mesh);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.03, 6, 28), material(COLORS[id], COLORS[id]));
+      ring.quaternion.copy(this.camera.quaternion);
       place(group, ring, 0, 1.8, 0);
       this.scene.add(group);
       const light = new THREE.PointLight(COLORS[id], 4, 5);
@@ -246,15 +243,15 @@ export class GameScene {
       this.scene.add(light);
       this.projectiles[id].position.copy(SOURCE_POSITIONS[id]);
       this.scene.add(this.projectiles[id]);
-      const text = this.makeLabel(SPELL_NAMES[id], id === 'force' ? '#ffb781' : '#89d8ff');
-      place(this.spellLabels, text, group.position.x, 2.65, group.position.z);
+      const text = this.makeLabel(id === 'force' ? 'forceLabel' : 'motionLabel', id === 'force' ? '#ffb781' : '#89d8ff');
+      place(this.spellLabels, text, group.position.x, 0.2, group.position.z + 1.1);
       this.threads[id].material = new THREE.MeshBasicMaterial({ color: COLORS[id], transparent: true, opacity: 0.85 });
       this.scene.add(this.threads[id]);
     }
     this.scene.add(this.spellLabels);
     for (const id of ['anchor', 'debris', 'mechanism'] as const) {
       const pos = TARGET_POSITIONS[id];
-      const text = this.makeLabel(TARGET_NAMES[id], '#b9ead7');
+      const text = this.makeLabel(id === 'anchor' ? 'anchorLabel' : id === 'debris' ? 'debrisLabel' : 'mechanismLabel', '#b9ead7');
       place(this.targetMarkers, text, pos.x, pos.y + 0.85, pos.z);
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry(0.55, 0.035, 6, 24),
@@ -268,12 +265,11 @@ export class GameScene {
   }
 
   private buildPlayer(): void {
-    const coat = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.9, 8), material(0xb2a1d1));
-    place(this.player, coat, 0, 0.65, 0);
-    place(this.player, new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), material(0xdaccc3)), 0, 1.2, 0);
-    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.55, 8), material(0x3f3559));
-    place(this.player, hat, 0, 1.58, 0);
-    place(this.player, box(0.18, 0.4, 0.08, material(0x81d8cf, 0x23453e)), 0, 0.86, -0.27);
+    this.player.add(this.playerSprite.mesh);
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.45, 24),
+      new THREE.MeshBasicMaterial({ color: 0x080e1a, transparent: true, opacity: 0.5, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2;
+    place(this.player, shadow, 0, 0.006, 0);
     const aura = new THREE.Mesh(
       new THREE.TorusGeometry(0.4, 0.02, 6, 24),
       new THREE.MeshBasicMaterial({ color: 0xb8a1f2 }),
@@ -287,21 +283,21 @@ export class GameScene {
     const width = Math.max(1, this.host.clientWidth);
     const height = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(width, height);
-    this.camera.aspect = width / height;
-    const portrait = this.camera.aspect < 0.8;
-    this.camera.fov = portrait ? 80 : 58;
-    this.cameraDistance = portrait ? 7.5 : 5.8;
-    this.camera.updateProjectionMatrix();
+    const compact = window.matchMedia('(pointer: coarse), (max-width: 800px)').matches;
+    const landscape = compact && window.innerHeight <= 620;
+    fitBirdEyeCamera(this.camera, width, height, {
+      top: compact ? (landscape ? 12 : 125) : 30,
+      bottom: compact ? (landscape ? 58 : 170) : 70,
+      left: compact ? (landscape ? 220 : 14) : 30,
+      right: compact ? (landscape ? 220 : 14) : 30,
+    });
   }
 
   reset(): void {
     this.player.position.copy(START);
-    this.player.rotation.set(0, 0, 0);
-    this.yaw = 0;
-    this.pitch = 0.42;
+    this.playerSprite.reset();
     this.visualTime = 0;
     this.lastSignature = '';
-    this.updateCamera(1);
   }
 
   private canStand(x: number, z: number, state: GameState): boolean {
@@ -313,16 +309,13 @@ export class GameScene {
   move(x: number, y: number, seconds: number, state: GameState): void {
     if (state.phase === 'executing' || state.won) return;
     const speed = 3.2;
-    const dx = (x * Math.cos(this.yaw) - y * Math.sin(this.yaw)) * speed * seconds;
-    const dz = (-x * Math.sin(this.yaw) - y * Math.cos(this.yaw)) * speed * seconds;
+    const dx = x * speed * seconds;
+    const dz = -y * speed * seconds;
+    const previousX = this.player.position.x;
+    const previousZ = this.player.position.z;
     if (this.canStand(this.player.position.x + dx, this.player.position.z, state)) this.player.position.x += dx;
     if (this.canStand(this.player.position.x, this.player.position.z + dz, state)) this.player.position.z += dz;
-    if (Math.hypot(dx, dz) > 0.001) this.player.rotation.y = Math.atan2(-dx, -dz);
-  }
-
-  orbit(x: number, y: number): void {
-    this.yaw -= x;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + y, 0.18, 0.85);
+    this.playerSprite.move(this.player.position.x - previousX, this.player.position.z - previousZ);
   }
 
   nearestSpell(): SpellId | null {
@@ -340,18 +333,6 @@ export class GameScene {
 
   atExit(): boolean {
     return Math.hypot(this.player.position.x, this.player.position.z + 8) < 1.2;
-  }
-
-  private updateCamera(seconds: number): void {
-    this.cameraTarget.copy(this.player.position).add(new THREE.Vector3(0, 1.15, 0));
-    const horizontal = this.cameraDistance * Math.cos(this.pitch);
-    this.temporaryPosition.set(
-      THREE.MathUtils.clamp(this.player.position.x + Math.sin(this.yaw) * horizontal, -5.35, 5.35),
-      1.15 + this.cameraDistance * Math.sin(this.pitch),
-      THREE.MathUtils.clamp(this.player.position.z + Math.cos(this.yaw) * horizontal, -9.4, 14),
-    );
-    this.camera.position.lerp(this.temporaryPosition, this.reducedMotion ? 1 : 1 - Math.exp(-12 * seconds));
-    this.camera.lookAt(this.cameraTarget);
   }
 
   render(state: GameState, sight: boolean, selected: SpellId | null, seconds: number): void {
@@ -402,7 +383,7 @@ export class GameScene {
       this.projectiles.force.rotation.y = this.visualTime * 0.35;
       this.projectiles.motion.rotation.y = -this.visualTime * 0.35;
     }
-    this.updateCamera(seconds);
+    this.playerSprite.animate(!this.reducedMotion && state.phase !== 'executing' && !state.won);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -420,7 +401,12 @@ export class GameScene {
       }
     });
     geometries.forEach((geometry) => geometry.dispose());
-    materials.forEach((mat) => mat.dispose());
+    const textures = new Set<THREE.Texture>();
+    materials.forEach((mat) => {
+      if (mat instanceof THREE.MeshBasicMaterial && mat.map) textures.add(mat.map);
+      mat.dispose();
+    });
+    textures.forEach((texture) => texture.dispose());
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

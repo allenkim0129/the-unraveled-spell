@@ -160,7 +160,7 @@ test('observe the unedited catastrophe and reset a running attempt without stale
   await expect(page.locator('#execution-bar')).toBeHidden();
 });
 
-test('touch movement remains captured during independent camera input and clears on cancel', async ({ page, isMobile }) => {
+test('touch movement remains captured during an unrelated scene touch and clears on cancel', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Real multitouch is validated in the touch-enabled mobile context');
   await start(page);
   const session = await page.context().newCDPSession(page);
@@ -173,6 +173,7 @@ test('touch movement remains captured during independent camera input and clears
   await session.send('Input.dispatchTouchEvent', {
     type: 'touchStart', touchPoints: [stick, { id: 1, x: 200, y: 260 }],
   });
+
   await session.send('Input.dispatchTouchEvent', {
     type: 'touchMove', touchPoints: [stick, { id: 1, x: 240, y: 280 }],
   });
@@ -207,4 +208,27 @@ test('welcome screen and unavailable-WebGL errors support both languages', async
   await expect(page.locator('#fatal-message')).toContainText('3D renderer could not start');
   await page.locator('#fatal-language').selectOption('ko');
   await expect(page.locator('#fatal-message')).toContainText('3D 렌더러를 시작할 수 없어요');
+});
+
+test('bird-eye camera stays fixed when the scene is dragged and both languages explain the controls', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await start(page);
+  const canvas = page.locator('#scene canvas');
+  await expect(canvas).toHaveAttribute('data-view', 'fixed-bird-eye');
+  await expect(canvas).toHaveAttribute('aria-label', /고정 버드아이/);
+  await page.waitForTimeout(4600);
+  const before = await canvas.screenshot();
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error('Scene is not visible');
+  await page.mouse.move(bounds.x + bounds.width * 0.45, bounds.y + bounds.height * 0.55);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.4, { steps: 8 });
+  await page.mouse.up();
+  expect((await canvas.screenshot()).equals(before)).toBe(true);
+  await page.locator('#language').selectOption('en');
+  await expect(canvas).toHaveAttribute('aria-label', /fixed bird-eye view/);
+  await page.locator('#help').click();
+  await expect(page.locator('.intro-controls')).toContainText('No camera controls needed');
+  await page.locator('#intro-language').selectOption('ko');
+  await expect(page.locator('.intro-controls')).toContainText('시점 조작은 필요 없어요');
 });

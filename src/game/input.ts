@@ -13,17 +13,11 @@ const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowL
 export class GameInput {
   private keys = new Set<string>();
   private stickPointer: number | null = null;
-  private cameraPointer: number | null = null;
   private stickX = 0;
   private stickY = 0;
-  private cameraX = 0;
-  private cameraY = 0;
-  private orbitX = 0;
-  private orbitY = 0;
   private listeners = new AbortController();
 
   constructor(
-    canvas: HTMLCanvasElement,
     stick: HTMLElement,
     knob: HTMLElement,
     onAction: (action: InputAction) => void,
@@ -78,26 +72,6 @@ export class GameInput {
     stick.addEventListener('pointercancel', releaseStick, options);
     stick.addEventListener('lostpointercapture', releaseStick, options);
 
-    canvas.addEventListener('pointerdown', (event) => {
-      if (this.cameraPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
-      this.cameraPointer = event.pointerId;
-      this.cameraX = event.clientX;
-      this.cameraY = event.clientY;
-      canvas.setPointerCapture(event.pointerId);
-    }, options);
-    canvas.addEventListener('pointermove', (event) => {
-      if (event.pointerId !== this.cameraPointer) return;
-      this.orbitX += (event.clientX - this.cameraX) * 0.006;
-      this.orbitY += (event.clientY - this.cameraY) * 0.004;
-      this.cameraX = event.clientX;
-      this.cameraY = event.clientY;
-    }, options);
-    const releaseCamera = (event: PointerEvent) => {
-      if (event.pointerId === this.cameraPointer) this.cameraPointer = null;
-    };
-    canvas.addEventListener('pointerup', releaseCamera, options);
-    canvas.addEventListener('pointercancel', releaseCamera, options);
-    canvas.addEventListener('lostpointercapture', releaseCamera, options);
     window.addEventListener('blur', () => this.clear(knob), options);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clear(knob);
@@ -115,16 +89,10 @@ export class GameInput {
     return { x, y };
   }
 
-  orbit(): { x: number; y: number } {
-    const result = { x: this.orbitX, y: this.orbitY };
-    this.orbitX = this.orbitY = 0;
-    return result;
-  }
-
   clear(knob: HTMLElement): void {
     this.keys.clear();
-    this.stickPointer = this.cameraPointer = null;
-    this.stickX = this.stickY = this.orbitX = this.orbitY = 0;
+    this.stickPointer = null;
+    this.stickX = this.stickY = 0;
     knob.style.transform = '';
   }
 

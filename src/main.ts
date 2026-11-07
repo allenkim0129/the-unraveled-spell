@@ -161,7 +161,7 @@ function initialize(): void {
       case 'reset': reset(); break;
     }
   };
-  const input = new GameInput(scene.renderer.domElement, ui.joystick, ui.knob, action);
+  const input = new GameInput(ui.joystick, ui.knob, action);
 
   function updateUI(): void {
     const nearby = scene.nearestSpell();
@@ -270,8 +270,6 @@ function initialize(): void {
     try {
       if (started && !ui.instructions.open && !document.hidden) {
         const axes = input.axes();
-        const orbit = input.orbit();
-        scene.orbit(orbit.x, orbit.y);
         const movementSeconds = Math.min(elapsedSeconds, 0.25);
         const steps = Math.max(1, Math.ceil(movementSeconds / 0.025));
         for (let i = 0; i < steps; i++) scene.move(axes.x, axes.y, movementSeconds / steps, state);
